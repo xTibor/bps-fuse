@@ -3,6 +3,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io::Result;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crc::crc32;
 
@@ -12,7 +13,7 @@ use crate::bps::BpsHeader;
 pub struct RomManager {
     pub base_directory: PathBuf,
     pub source_roms: HashMap<u32, PathBuf>,
-    pub target_roms: HashMap<PathBuf, BpsHeader>,
+    pub target_roms: HashMap<PathBuf, Arc<BpsHeader>>,
 }
 
 fn is_bps_file(path: &Path) -> bool {
@@ -58,7 +59,7 @@ impl RomManager {
 
                 let mut target_path = header.patch_path.strip_prefix(&self.base_directory).unwrap().to_owned();
                 target_path.set_extension(source_path.extension().unwrap_or_default());
-                self.target_roms.insert(target_path, header);
+                self.target_roms.insert(target_path, Arc::new(header));
             } else {
                 eprintln!(
                     "No source ROM was found for {:?} (CRC32=0x{:08X})",

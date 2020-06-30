@@ -1,5 +1,6 @@
-use byteorder::ReadBytesExt;
 use std::io::{Read, Result};
+
+use byteorder::ReadBytesExt;
 
 pub trait ReadExt: Read {
     fn read_vlq(&mut self) -> Result<u64> {

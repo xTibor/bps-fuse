@@ -1,6 +1,7 @@
+use std::cmp;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use fuse_mt::{DirectoryEntry, FileAttr, FileType, FilesystemMT, RequestInfo};
@@ -22,8 +23,14 @@ fn timespec_from(st: &SystemTime) -> Timespec {
 }
 
 enum Handle {
-    Directory { attr: FileAttr },
-    File { attr: FileAttr, data: Option<Vec<u8>> },
+    Directory {
+        attr: FileAttr,
+    },
+    File {
+        attr: FileAttr,
+        header: Arc<BpsHeader>,
+        data: Option<Vec<u8>>,
+    },
 }
 
 pub struct RomFilesystem {
@@ -155,7 +162,7 @@ impl FilesystemMT for RomFilesystem {
         }
     }
 
-    fn access(&self, _req: RequestInfo, path: &Path, mask: u32) -> ResultEmpty {
+    fn access(&self, _req: RequestInfo, path: &Path, _mask: u32) -> ResultEmpty {
         let path = path.strip_prefix("/").unwrap();
 
         eprintln!("access: {:?}", path);
@@ -204,6 +211,7 @@ impl FilesystemMT for RomFilesystem {
                 handle,
                 Handle::File {
                     attr: self.get_file_attr(&rom),
+                    header: rom.clone(),
                     data: None,
                 },
             );
@@ -223,10 +231,32 @@ impl FilesystemMT for RomFilesystem {
         size: u32,
         result: impl FnOnce(std::result::Result<&[u8], libc::c_int>),
     ) {
-        // TODO: Deferred ROM patching on read
-        // if is_none() { rom.generate_patched_rom() }
+        let mut handles = self.handles.lock().unwrap();
 
-        result(Err(libc::ENOSYS))
+        if let Some(Handle::File { data, header, .. }) = handles.get_mut(&fh) {
+            // Deferred ROM patching on first read
+            if data.is_none() {
+                eprintln!("generate");
+                *data = Some(header.generate_patched_rom());
+            }
+
+            if let Some(data) = data {
+                if offset as usize > data.len() {
+                    eprintln!("after");
+                    result(Ok(&[]));
+                } else {
+                    let offset = offset as usize;
+                    let size = cmp::min(size as usize, data.len() - offset);
+
+                    eprintln!("read {} {}", offset, size);
+                    result(Ok(&data[offset..offset + size]));
+                }
+            } else {
+                unreachable!();
+            }
+        } else {
+            result(Err(libc::ENOENT));
+        }
     }
 
     fn release(

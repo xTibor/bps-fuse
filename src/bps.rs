@@ -71,6 +71,12 @@ impl BpsHeader {
 
     pub fn generate_patched_rom(&self) -> Vec<u8> {
         // TODO
-        vec![0; self.source_size as usize]
+        let mut result = vec![0; self.target_size as usize];
+
+        for (i, b) in result.iter_mut().enumerate() {
+            *b = i as u8;
+        }
+
+        result
     }
 }
