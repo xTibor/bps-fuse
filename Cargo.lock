@@ -41,7 +41,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuse-softpatch"
+name = "fuse-bps-softpatch"
 version = "0.1.0"
 dependencies = [
  "byteorder",
