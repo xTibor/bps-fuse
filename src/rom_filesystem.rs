@@ -111,8 +111,7 @@ impl FilesystemMT for RomFilesystem {
         }
     }
 
-    fn readdir(&self, _req: RequestInfo, path: &Path, fh: u64) -> ResultReaddir {
-        let path = path.strip_prefix("/").unwrap();
+    fn readdir(&self, _req: RequestInfo, _path: &Path, fh: u64) -> ResultReaddir {
         let rom_manager = self.rom_manager.lock().unwrap();
         let handles = self.handles.lock().unwrap();
 
@@ -142,8 +141,7 @@ impl FilesystemMT for RomFilesystem {
         }
     }
 
-    fn releasedir(&self, _req: RequestInfo, path: &Path, fh: u64, _flags: u32) -> ResultEmpty {
-        let path = path.strip_prefix("/").unwrap();
+    fn releasedir(&self, _req: RequestInfo, _path: &Path, fh: u64, _flags: u32) -> ResultEmpty {
         let mut handles = self.handles.lock().unwrap();
 
         if let Some(Handle::Directory { .. }) = handles.get(&fh) {
@@ -154,9 +152,7 @@ impl FilesystemMT for RomFilesystem {
         }
     }
 
-    fn access(&self, _req: RequestInfo, path: &Path, _mask: u32) -> ResultEmpty {
-        let path = path.strip_prefix("/").unwrap();
-
+    fn access(&self, _req: RequestInfo, _path: &Path, _mask: u32) -> ResultEmpty {
         Ok(())
     }
 
@@ -244,13 +240,12 @@ impl FilesystemMT for RomFilesystem {
     fn release(
         &self,
         _req: RequestInfo,
-        path: &Path,
+        _path: &Path,
         fh: u64,
         _flags: u32,
         _lock_owner: u64,
         _flush: bool,
     ) -> ResultEmpty {
-        let path = path.strip_prefix("/").unwrap();
         let mut handles = self.handles.lock().unwrap();
 
         if let Some(Handle::File { .. }) = handles.get(&fh) {
