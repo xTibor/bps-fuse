@@ -1,13 +1,17 @@
-use byteorder::{LittleEndian, ReadBytesExt};
-use std::fs::File;
-use std::io::{Read, Result, Seek, SeekFrom};
+use std::fs::{self, File};
+use std::io::{BufReader, Read, Result, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use byteorder::{LittleEndian, ReadBytesExt};
+use crc::crc32;
+
 use crate::readext::ReadExt;
 
+const FOOTER_SIZE: usize = 12;
+
 #[derive(Debug)]
-pub struct BpsHeader {
+pub struct BpsPatch {
     pub source_path: Option<PathBuf>,
     pub patch_path: PathBuf,
 
@@ -27,7 +31,7 @@ pub struct BpsHeader {
     pub modify_time: SystemTime,
 }
 
-impl BpsHeader {
+impl BpsPatch {
     pub fn new(patch_path: &Path) -> Result<Self> {
         let mut f = File::open(patch_path)?;
 
@@ -40,10 +44,10 @@ impl BpsHeader {
         f.read_exact(&mut metadata)?;
 
         // Patch
-        let patch_offset = f.seek(SeekFrom::Current(0))?;
+        let patch_offset = f.stream_position()?;
 
         // Footer
-        f.seek(SeekFrom::End(-12))?;
+        f.seek(SeekFrom::End(-(FOOTER_SIZE as i64)))?;
         let source_checksum = f.read_u32::<LittleEndian>()?;
         let target_checksum = f.read_u32::<LittleEndian>()?;
         let patch_checksum = f.read_u32::<LittleEndian>()?;
@@ -53,7 +57,7 @@ impl BpsHeader {
         let create_time = f.metadata()?.created()?;
         let modify_time = f.metadata()?.modified()?;
 
-        Ok(BpsHeader {
+        Ok(BpsPatch {
             source_path: None,
             patch_path: patch_path.to_owned(),
             source_size,
@@ -69,14 +73,81 @@ impl BpsHeader {
         })
     }
 
-    pub fn generate_patched_rom(&self) -> Vec<u8> {
-        // TODO
-        let mut result = vec![0; self.target_size as usize];
+    // TOCTOU
+    pub fn patched_rom(&self) -> Result<Vec<u8>> {
+        assert!(self.source_path.is_some());
 
-        for (i, b) in result.iter_mut().enumerate() {
-            *b = i as u8;
+        let source = fs::read(self.source_path.as_ref().unwrap())?;
+        let mut target = vec![0; self.target_size as usize];
+
+        let mut patch_file = BufReader::new(File::open(&self.patch_path)?);
+        patch_file.seek(SeekFrom::Start(self.patch_offset))?;
+        let patch_end_offset = (patch_file.stream_len()? as usize) - FOOTER_SIZE;
+
+        let mut output_offset: usize = 0;
+        let mut source_relative_offset: usize = 0;
+        let mut target_relative_offset: usize = 0;
+
+        while (patch_file.stream_position()? as usize) < patch_end_offset {
+            let (command, length) = {
+                let data = patch_file.read_vlq()?;
+                (data & 3, (data >> 2) + 1)
+            };
+
+            match command {
+                0 => {
+                    // SourceRead
+                    for _ in 0..length {
+                        target[output_offset] = source[output_offset];
+                        output_offset += 1;
+                    }
+                }
+                1 => {
+                    // TargetRead
+                    for _ in 0..length {
+                        target[output_offset] = patch_file.read_u8()?;
+                        output_offset += 1;
+                    }
+                }
+                2 => {
+                    // SourceCopy
+                    let data = patch_file.read_vlq()?;
+
+                    let offs = (data >> 1) as usize;
+                    if data & 1 != 0 {
+                        source_relative_offset -= offs;
+                    } else {
+                        source_relative_offset += offs;
+                    }
+
+                    for _ in 0..length {
+                        target[output_offset] = source[source_relative_offset];
+                        output_offset += 1;
+                        source_relative_offset += 1;
+                    }
+                }
+                3 => {
+                    // TargetCopy
+                    let data = patch_file.read_vlq()?;
+
+                    let offs = (data >> 1) as usize;
+                    if data & 1 != 0 {
+                        target_relative_offset -= offs;
+                    } else {
+                        target_relative_offset += offs;
+                    }
+
+                    for _ in 0..length {
+                        target[output_offset] = target[target_relative_offset];
+                        output_offset += 1;
+                        target_relative_offset += 1;
+                    }
+                }
+                _ => unreachable!(),
+            }
         }
 
-        result
+        assert_eq!(self.target_checksum, crc32::checksum_ieee(&target));
+        Ok(target)
     }
 }

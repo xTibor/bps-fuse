@@ -7,13 +7,13 @@ use std::sync::Arc;
 
 use crc::crc32;
 
-use crate::bps::BpsHeader;
+use crate::bps::BpsPatch;
 
 #[derive(Debug)]
 pub struct RomManager {
     pub base_directory: PathBuf,
     pub source_roms: HashMap<u32, PathBuf>,
-    pub target_roms: HashMap<PathBuf, Arc<BpsHeader>>,
+    pub target_roms: HashMap<PathBuf, Arc<BpsPatch>>,
 }
 
 fn is_bps_file(path: &Path) -> bool {
@@ -52,7 +52,7 @@ impl RomManager {
             .filter(|e| !e.file_type().unwrap().is_dir())
             .filter(|e| is_bps_file(&e.path()))
         {
-            let mut header = BpsHeader::new(&entry.path())?;
+            let mut header = BpsPatch::new(&entry.path())?;
 
             if let Some(source_path) = self.source_roms.get(&header.source_checksum) {
                 header.source_path = Some(source_path.clone());

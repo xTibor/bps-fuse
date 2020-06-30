@@ -8,7 +8,7 @@ use fuse_mt::{DirectoryEntry, FileAttr, FileType, FilesystemMT, RequestInfo};
 use fuse_mt::{ResultEmpty, ResultEntry, ResultOpen, ResultReaddir};
 use time::Timespec;
 
-use crate::bps::BpsHeader;
+use crate::bps::BpsPatch;
 use crate::rom_manager::RomManager;
 
 const EPOCH: Timespec = Timespec { sec: 0, nsec: 0 };
@@ -28,7 +28,7 @@ enum Handle {
     },
     File {
         attr: FileAttr,
-        header: Arc<BpsHeader>,
+        header: Arc<BpsPatch>,
         data: Option<Vec<u8>>,
     },
 }
@@ -66,7 +66,7 @@ impl RomFilesystem {
         }
     }
 
-    fn get_file_attr(&self, header: &BpsHeader) -> FileAttr {
+    fn get_file_attr(&self, header: &BpsPatch) -> FileAttr {
         FileAttr {
             size: header.target_size,
             blocks: 0,
@@ -87,8 +87,6 @@ impl RomFilesystem {
 
 impl FilesystemMT for RomFilesystem {
     fn init(&self, _req: RequestInfo) -> ResultEmpty {
-        eprintln!("init");
-
         Ok(())
     }
 
@@ -96,8 +94,6 @@ impl FilesystemMT for RomFilesystem {
         let path = path.strip_prefix("/").unwrap();
         let mut handles = self.handles.lock().unwrap();
         let mut next_handle = self.next_handle.lock().unwrap();
-
-        eprintln!("opendir: {:?}", path);
 
         if path == Path::new("") {
             let handle = *next_handle;
@@ -119,8 +115,6 @@ impl FilesystemMT for RomFilesystem {
         let path = path.strip_prefix("/").unwrap();
         let rom_manager = self.rom_manager.lock().unwrap();
         let handles = self.handles.lock().unwrap();
-
-        eprintln!("readdir: {:?}", path);
 
         if let Some(Handle::Directory { .. }) = handles.get(&fh) {
             let mut files = Vec::new();
@@ -152,8 +146,6 @@ impl FilesystemMT for RomFilesystem {
         let path = path.strip_prefix("/").unwrap();
         let mut handles = self.handles.lock().unwrap();
 
-        eprintln!("releasedir: {:?}", path);
-
         if let Some(Handle::Directory { .. }) = handles.get(&fh) {
             handles.remove(&fh);
             Ok(())
@@ -165,8 +157,6 @@ impl FilesystemMT for RomFilesystem {
     fn access(&self, _req: RequestInfo, path: &Path, _mask: u32) -> ResultEmpty {
         let path = path.strip_prefix("/").unwrap();
 
-        eprintln!("access: {:?}", path);
-
         Ok(())
     }
 
@@ -175,8 +165,6 @@ impl FilesystemMT for RomFilesystem {
         let path = path.strip_prefix("/").unwrap();
         let rom_manager = self.rom_manager.lock().unwrap();
         let handles = self.handles.lock().unwrap();
-
-        eprintln!("getattr: {:?}", path);
 
         if let Some(fh) = fh {
             match handles.get(&fh) {
@@ -200,8 +188,6 @@ impl FilesystemMT for RomFilesystem {
         let rom_manager = self.rom_manager.lock().unwrap();
         let mut handles = self.handles.lock().unwrap();
         let mut next_handle = self.next_handle.lock().unwrap();
-
-        eprintln!("open: {:?}", path);
 
         if let Some(rom) = rom_manager.target_roms.get(path) {
             let handle = *next_handle;
@@ -236,19 +222,15 @@ impl FilesystemMT for RomFilesystem {
         if let Some(Handle::File { data, header, .. }) = handles.get_mut(&fh) {
             // Deferred ROM patching on first read
             if data.is_none() {
-                eprintln!("generate");
-                *data = Some(header.generate_patched_rom());
+                *data = Some(header.patched_rom().unwrap());
             }
 
             if let Some(data) = data {
                 if offset as usize > data.len() {
-                    eprintln!("after");
                     result(Ok(&[]));
                 } else {
                     let offset = offset as usize;
                     let size = cmp::min(size as usize, data.len() - offset);
-
-                    eprintln!("read {} {}", offset, size);
                     result(Ok(&data[offset..offset + size]));
                 }
             } else {
@@ -270,8 +252,6 @@ impl FilesystemMT for RomFilesystem {
     ) -> ResultEmpty {
         let path = path.strip_prefix("/").unwrap();
         let mut handles = self.handles.lock().unwrap();
-
-        eprintln!("release: {:?}", path);
 
         if let Some(Handle::File { .. }) = handles.get(&fh) {
             handles.remove(&fh);
