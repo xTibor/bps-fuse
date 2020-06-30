@@ -34,15 +34,15 @@ enum Handle {
 }
 
 pub struct RomFilesystem {
-    rom_manager: Mutex<RomManager>,
+    rom_manager: Arc<Mutex<RomManager>>,
     handles: Mutex<HashMap<u64, Handle>>,
     next_handle: Mutex<u64>,
 }
 
 impl RomFilesystem {
-    pub fn new(rom_manager: RomManager) -> Self {
+    pub fn new(rom_manager: Arc<Mutex<RomManager>>) -> Self {
         Self {
-            rom_manager: Mutex::new(rom_manager),
+            rom_manager,
             handles: Mutex::new(HashMap::new()),
             next_handle: Mutex::new(1),
         }

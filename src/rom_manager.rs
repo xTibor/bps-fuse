@@ -35,6 +35,7 @@ impl RomManager {
     }
 
     pub fn refresh(&mut self) -> Result<()> {
+        eprintln!("Refreshing");
         self.source_roms.clear();
         self.target_roms.clear();
 
