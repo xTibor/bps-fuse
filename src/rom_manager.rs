@@ -16,13 +16,6 @@ pub struct RomManager {
     pub target_roms: HashMap<PathBuf, Arc<BpsPatch>>,
 }
 
-fn is_bps_file(path: &Path) -> bool {
-    match path.extension().and_then(OsStr::to_str) {
-        Some("bps") | Some("BPS") => true,
-        _ => false,
-    }
-}
-
 impl RomManager {
     pub fn new(base_directory: &Path) -> Result<RomManager> {
         let mut result = Self {
@@ -38,6 +31,13 @@ impl RomManager {
         eprintln!("Refreshing");
         self.source_roms.clear();
         self.target_roms.clear();
+
+        fn is_bps_file(path: &Path) -> bool {
+            match path.extension().and_then(OsStr::to_str) {
+                Some("bps") | Some("BPS") => true,
+                _ => false,
+            }
+        }
 
         for entry in fs::read_dir(&self.base_directory)?
             .filter_map(|e| e.ok())
