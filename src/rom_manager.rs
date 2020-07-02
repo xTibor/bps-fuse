@@ -69,6 +69,12 @@ impl RomManager {
             }
         }
 
+        // TODO: UPS support
+        // With the same CRC32-matching logic as BPS
+
+        // TODO: IPS support
+        // Only when source_roms.len() == 1
+
         Ok(())
     }
 }
