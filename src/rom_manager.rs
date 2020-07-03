@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::fs;
+use std::fs::{self, DirEntry};
 use std::io::Result;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -57,20 +57,17 @@ impl RomManager {
             extensions.contains(&extension.as_str())
         }
 
-        for entry in fs::read_dir(&self.base_directory)?
+        let entries: Vec<DirEntry> = fs::read_dir(&self.base_directory)?
             .filter_map(|e| e.ok())
             .filter(|e| !e.file_type().unwrap().is_dir())
-            .filter(|e| extension_matches(&e.path(), ROM_EXTENSIONS))
-        {
+            .collect();
+
+        for entry in entries.iter().filter(|e| extension_matches(&e.path(), ROM_EXTENSIONS)) {
             let crc = crc32::checksum_ieee(&fs::read(entry.path())?);
             self.source_roms.insert(crc, entry.path().to_owned());
         }
 
-        for entry in fs::read_dir(&self.base_directory)?
-            .filter_map(|e| e.ok())
-            .filter(|e| !e.file_type().unwrap().is_dir())
-            .filter(|e| extension_matches(&e.path(), &["bps"]))
-        {
+        for entry in entries.iter().filter(|e| extension_matches(&e.path(), &["bps"])) {
             let mut header = BpsPatch::new(&entry.path())?;
 
             if let Some(source_path) = self.source_roms.get(&header.source_checksum) {
