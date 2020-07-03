@@ -9,6 +9,22 @@ use crc::crc32;
 
 use crate::bps::BpsPatch;
 
+#[rustfmt::skip]
+const ROM_EXTENSIONS: &[&str] = &[
+    // Generic
+    "bin", "rom", "crt",
+    // Nintendo
+    "nes", "fds",        // Famicom / NES
+    "sfc", "smc",        // Super Famicom / SNES
+    "vb",                // Virtual Boy
+    "n64", "v64", "z64", // Nintendo 64
+    "gb",                // Game Boy
+    "gbc",               // Game Boy Color
+    "gba", "agb",        // Game Boy Advance
+    "nds",               // Nintendo DS
+    "3ds",               // Nintendo 3DS
+];
+
 #[derive(Debug)]
 pub struct RomManager {
     pub base_directory: PathBuf,
@@ -32,17 +48,19 @@ impl RomManager {
         self.source_roms.clear();
         self.target_roms.clear();
 
-        fn is_bps_file(path: &Path) -> bool {
-            match path.extension().and_then(OsStr::to_str) {
-                Some("bps") | Some("BPS") => true,
-                _ => false,
-            }
+        fn extension_matches(path: &Path, extensions: &[&str]) -> bool {
+            let extension = path
+                .extension()
+                .and_then(OsStr::to_str)
+                .map(str::to_ascii_lowercase)
+                .unwrap_or_default();
+            extensions.contains(&extension.as_str())
         }
 
         for entry in fs::read_dir(&self.base_directory)?
             .filter_map(|e| e.ok())
             .filter(|e| !e.file_type().unwrap().is_dir())
-            .filter(|e| !is_bps_file(&e.path()))
+            .filter(|e| extension_matches(&e.path(), ROM_EXTENSIONS))
         {
             let crc = crc32::checksum_ieee(&fs::read(entry.path())?);
             self.source_roms.insert(crc, entry.path().to_owned());
@@ -51,7 +69,7 @@ impl RomManager {
         for entry in fs::read_dir(&self.base_directory)?
             .filter_map(|e| e.ok())
             .filter(|e| !e.file_type().unwrap().is_dir())
-            .filter(|e| is_bps_file(&e.path()))
+            .filter(|e| extension_matches(&e.path(), &["bps"]))
         {
             let mut header = BpsPatch::new(&entry.path())?;
 
