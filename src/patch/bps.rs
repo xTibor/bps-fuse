@@ -58,7 +58,7 @@ impl BpsPatch {
         let create_time = f.metadata()?.created()?;
         let modify_time = f.metadata()?.modified()?;
 
-        Ok(BpsPatch {
+        Ok(Self {
             source_path: None,
             patch_path: patch_path.to_owned(),
             source_size,
