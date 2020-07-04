@@ -101,7 +101,7 @@ impl RomManager {
                 let source_path = self.source_roms.values().next().unwrap();
                 let patch = IpsPatch::new(&entry.path(), source_path)?;
 
-                let mut target_path = patch.patch_path.strip_prefix(&self.base_directory).unwrap().to_owned();
+                let mut target_path = entry.path().strip_prefix(&self.base_directory).unwrap().to_owned();
                 target_path.set_extension(source_path.extension().unwrap_or_default());
                 self.target_roms.insert(target_path, Arc::new(patch));
             }
