@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use crc::crc32;
 
-use crate::patch::Patch;
 use crate::patch::bps::BpsPatch;
 use crate::patch::ips::IpsPatch;
+use crate::patch::Patch;
 
 #[rustfmt::skip]
 const ROM_EXTENSIONS: &[&str] = &[
@@ -70,29 +70,33 @@ impl RomManager {
 
         if self.source_roms.is_empty() {
             eprintln!("No source ROMs were found in {:?}", self.base_directory);
-            return Ok(())
+            return Ok(());
         }
 
         for entry in entries.iter().filter(|e| extension_matches(&e.path(), &["bps"])) {
             let mut patch = BpsPatch::new(&entry.path())?;
 
-            if let Some(source_path) = self.source_roms.get(&patch.source_checksum) {
-                patch.source_path = Some(source_path.clone());
+            if let Some(source_path) = self.source_roms.get(&patch.source_checksum()) {
+                patch.set_source_path(source_path);
 
-                let mut target_path = patch.patch_path.strip_prefix(&self.base_directory).unwrap().to_owned();
+                let mut target_path = entry.path().strip_prefix(&self.base_directory).unwrap().to_owned();
                 target_path.set_extension(source_path.extension().unwrap_or_default());
                 self.target_roms.insert(target_path, Arc::new(patch));
             } else {
                 eprintln!(
                     "No source ROM was found for {:?} (CRC32=0x{:08X})",
-                    patch.patch_path, patch.source_checksum
+                    entry.path(),
+                    patch.source_checksum()
                 );
             }
         }
 
         for entry in entries.iter().filter(|e| extension_matches(&e.path(), &["ips"])) {
             if self.source_roms.len() > 1 {
-                eprintln!("Multiple source ROMs were found for {:?}, cannot decide which one to choose", entry.path());
+                eprintln!(
+                    "Multiple source ROMs were found for {:?}, cannot decide which one to choose",
+                    entry.path()
+                );
             } else {
                 let source_path = self.source_roms.values().next().unwrap();
                 let patch = IpsPatch::new(&entry.path(), source_path)?;

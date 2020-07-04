@@ -13,11 +13,11 @@ const FOOTER_SIZE: usize = 12;
 
 #[derive(Debug)]
 pub struct BpsPatch {
-    pub source_path: Option<PathBuf>,
-    pub patch_path: PathBuf,
+    source_path: Option<PathBuf>,
+    patch_path: PathBuf,
 
     source_size: u64,
-    pub source_checksum: u32,
+    source_checksum: u32,
 
     target_size: u64,
     target_checksum: u32,
@@ -72,6 +72,14 @@ impl BpsPatch {
             create_time,
             modify_time,
         })
+    }
+
+    pub fn set_source_path(&mut self, source_path: &Path) {
+        self.source_path = Some(source_path.to_path_buf());
+    }
+
+    pub fn source_checksum(&self) -> u32 {
+        self.source_checksum
     }
 }
 
