@@ -6,6 +6,7 @@ use std::time::SystemTime;
 use byteorder::{LittleEndian, ReadBytesExt};
 use crc::crc32;
 
+use crate::patch::Patch;
 use crate::readext::ReadExt;
 
 const FOOTER_SIZE: usize = 12;
@@ -15,20 +16,20 @@ pub struct BpsPatch {
     pub source_path: Option<PathBuf>,
     pub patch_path: PathBuf,
 
-    pub source_size: u64,
+    source_size: u64,
     pub source_checksum: u32,
 
-    pub target_size: u64,
-    pub target_checksum: u32,
+    target_size: u64,
+    target_checksum: u32,
 
-    pub patch_offset: u64,
-    pub patch_checksum: u32,
+    patch_offset: u64,
+    patch_checksum: u32,
 
-    pub metadata: Vec<u8>,
+    metadata: Vec<u8>,
 
-    pub access_time: SystemTime,
-    pub create_time: SystemTime,
-    pub modify_time: SystemTime,
+    access_time: SystemTime,
+    create_time: SystemTime,
+    modify_time: SystemTime,
 }
 
 impl BpsPatch {
@@ -72,14 +73,23 @@ impl BpsPatch {
             modify_time,
         })
     }
+}
 
-    // TOCTOU
-    pub fn patched_rom(&self) -> Result<Vec<u8>> {
+impl Patch for BpsPatch {
+    fn target_size(&self) -> u64 {
+        self.target_size
+    }
+
+    fn patched_rom(&self) -> Result<Vec<u8>> {
         assert!(self.source_path.is_some());
 
         let source = fs::read(self.source_path.as_ref().unwrap())?;
+        assert_eq!(source.len() as u64, self.source_size);
+        assert_eq!(self.source_checksum, crc32::checksum_ieee(&source));
+
         let mut target = vec![0; self.target_size as usize];
 
+        // TODO: patch_file CRC checksum
         let mut patch_file = BufReader::new(File::open(&self.patch_path)?);
         patch_file.seek(SeekFrom::Start(self.patch_offset))?;
         let patch_end_offset = (patch_file.stream_len()? as usize) - FOOTER_SIZE;
@@ -147,6 +157,7 @@ impl BpsPatch {
             }
         }
 
+        assert_eq!(target.len() as u64, self.target_size);
         assert_eq!(self.target_checksum, crc32::checksum_ieee(&target));
         Ok(target)
     }

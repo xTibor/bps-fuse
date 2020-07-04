@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::process;
 use std::sync::{Arc, Mutex};
 
-mod bps;
+mod patch;
 mod readext;
 mod rom_filesystem;
 mod rom_manager;

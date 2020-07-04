@@ -2,18 +2,19 @@ use std::cmp;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
+//use std::time::SystemTime;
 
 use fuse_mt::{DirectoryEntry, FileAttr, FileType, FilesystemMT, RequestInfo};
 use fuse_mt::{ResultEmpty, ResultEntry, ResultOpen, ResultReaddir};
 use time::Timespec;
 
-use crate::bps::BpsPatch;
+use crate::patch::Patch;
 use crate::rom_manager::RomManager;
 
 const EPOCH: Timespec = Timespec { sec: 0, nsec: 0 };
 const TTL: Timespec = Timespec { sec: 1, nsec: 0 };
 
+/*
 fn timespec_from(st: &SystemTime) -> Timespec {
     if let Ok(dur_since_epoch) = st.duration_since(std::time::UNIX_EPOCH) {
         Timespec::new(dur_since_epoch.as_secs() as i64, dur_since_epoch.subsec_nanos() as i32)
@@ -21,6 +22,7 @@ fn timespec_from(st: &SystemTime) -> Timespec {
         Timespec::new(0, 0)
     }
 }
+*/
 
 enum Handle {
     Directory {
@@ -28,7 +30,7 @@ enum Handle {
     },
     File {
         attr: FileAttr,
-        header: Arc<BpsPatch>,
+        patch: Arc<dyn Patch + Send + Sync>,
         data: Option<Vec<u8>>,
     },
 }
@@ -66,14 +68,14 @@ impl RomFilesystem {
         }
     }
 
-    fn get_file_attr(&self, header: &BpsPatch) -> FileAttr {
+    fn get_file_attr(&self, patch: &Arc<dyn Patch + Send + Sync>) -> FileAttr {
         FileAttr {
-            size: header.target_size,
+            size: patch.target_size(),
             blocks: 0,
-            atime: timespec_from(&header.access_time),
-            mtime: timespec_from(&header.modify_time),
-            ctime: timespec_from(&header.modify_time),
-            crtime: timespec_from(&header.create_time),
+            atime: EPOCH,  //timespec_from(&patch.access_time),
+            mtime: EPOCH,  //timespec_from(&patch.modify_time),
+            ctime: EPOCH,  //timespec_from(&patch.modify_time),
+            crtime: EPOCH, //timespec_from(&patch.create_time),
             kind: FileType::RegularFile,
             perm: 0o444,
             nlink: 1,
@@ -192,8 +194,8 @@ impl FilesystemMT for RomFilesystem {
             handles.insert(
                 handle,
                 Handle::File {
-                    attr: self.get_file_attr(&rom),
-                    header: rom.clone(),
+                    attr: self.get_file_attr(rom),
+                    patch: rom.clone(),
                     data: None,
                 },
             );
@@ -215,10 +217,10 @@ impl FilesystemMT for RomFilesystem {
     ) {
         let mut handles = self.handles.lock().unwrap();
 
-        if let Some(Handle::File { data, header, .. }) = handles.get_mut(&fh) {
+        if let Some(Handle::File { data, patch, .. }) = handles.get_mut(&fh) {
             // Deferred ROM patching on first read
             if data.is_none() {
-                *data = Some(header.patched_rom().unwrap());
+                *data = Some(patch.patched_rom().unwrap());
             }
 
             if let Some(data) = data {
