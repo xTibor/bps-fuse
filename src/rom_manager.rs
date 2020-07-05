@@ -74,20 +74,25 @@ impl RomManager {
         }
 
         for entry in entries.iter().filter(|e| extension_matches(&e.path(), &["bps"])) {
-            let mut patch = BpsPatch::new(&entry.path())?;
+            match BpsPatch::new(&entry.path()) {
+                Ok(mut patch) => {
+                    if let Some(source_path) = self.source_roms.get(&patch.source_checksum()) {
+                        patch.set_source_path(source_path);
 
-            if let Some(source_path) = self.source_roms.get(&patch.source_checksum()) {
-                patch.set_source_path(source_path);
-
-                let mut target_path = entry.path().strip_prefix(&self.base_directory).unwrap().to_owned();
-                target_path.set_extension(source_path.extension().unwrap_or_default());
-                self.target_roms.insert(target_path, Arc::new(patch));
-            } else {
-                eprintln!(
-                    "No source ROM was found for {:?} (CRC32=0x{:08X})",
-                    entry.path(),
-                    patch.source_checksum()
-                );
+                        let mut target_path = entry.path().strip_prefix(&self.base_directory).unwrap().to_owned();
+                        target_path.set_extension(source_path.extension().unwrap_or_default());
+                        self.target_roms.insert(target_path, Arc::new(patch));
+                    } else {
+                        eprintln!(
+                            "No source ROM was found for {:?} (CRC32=0x{:08X})",
+                            entry.path(),
+                            patch.source_checksum()
+                        );
+                    }
+                }
+                Err(err) => {
+                    eprintln!("Failed to load {:?}: {}", entry.path(), err);
+                }
             }
         }
 
@@ -99,19 +104,22 @@ impl RomManager {
                 );
             } else {
                 let source_path = self.source_roms.values().next().unwrap();
-                let patch = IpsPatch::new(&entry.path(), source_path)?;
 
-                let mut target_path = entry.path().strip_prefix(&self.base_directory).unwrap().to_owned();
-                target_path.set_extension(source_path.extension().unwrap_or_default());
-                self.target_roms.insert(target_path, Arc::new(patch));
+                match IpsPatch::new(&entry.path(), source_path) {
+                    Ok(patch) => {
+                        let mut target_path = entry.path().strip_prefix(&self.base_directory).unwrap().to_owned();
+                        target_path.set_extension(source_path.extension().unwrap_or_default());
+                        self.target_roms.insert(target_path, Arc::new(patch));
+                    }
+                    Err(err) => {
+                        eprintln!("Failed to load {:?}: {}", entry.path(), err);
+                    }
+                }
             }
         }
 
         // TODO: UPS support
         // With the same CRC32-matching logic as BPS
-
-        // TODO: IPS support
-        // Only when source_roms.len() == 1
 
         Ok(())
     }
