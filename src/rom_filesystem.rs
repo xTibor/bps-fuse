@@ -220,7 +220,14 @@ impl FilesystemMT for RomFilesystem {
         if let Some(Handle::File { data, patch, .. }) = handles.get_mut(&fh) {
             // Deferred ROM patching on first read
             if data.is_none() {
-                *data = Some(patch.patched_rom().unwrap());
+                match patch.patched_rom() {
+                    Ok(patched_rom) => *data = Some(patched_rom),
+                    Err(err) => {
+                        eprintln!("Failed to patch ROM: {}", err);
+                        result(Err(libc::EIO));
+                        return;
+                    }
+                }
             }
 
             if let Some(data) = data {

@@ -41,7 +41,9 @@ impl RomWatcher {
                     }
 
                     if changed {
-                        rom_manager.lock().unwrap().refresh().unwrap();
+                        if let Err(err) = rom_manager.lock().unwrap().refresh() {
+                            eprintln!("Failed to refresh ROMs: {}", err);
+                        }
                     }
                 }
             });
