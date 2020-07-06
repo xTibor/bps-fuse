@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt;
 use std::fs::{self, File};
-use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -18,6 +18,7 @@ const BPS_FOOTER_SIZE: usize = 12;
 
 #[derive(Debug)]
 pub enum BpsError {
+    OutdatedCache,
     FormatMarker,
     SourceLength,
     TargetLength,
@@ -29,6 +30,7 @@ pub enum BpsError {
 impl fmt::Display for BpsError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            BpsError::OutdatedCache => write!(f, "outdated cache"),
             BpsError::FormatMarker => write!(f, "invalid format marker"),
             BpsError::SourceLength => write!(f, "source length mismatch"),
             BpsError::TargetLength => write!(f, "target length mismatch"),
@@ -44,29 +46,23 @@ impl Error for BpsError {}
 #[derive(Debug)]
 pub struct BpsPatch {
     source_path: Option<PathBuf>,
-    patch_path: PathBuf,
-
     source_size: u64,
     source_checksum: u32,
 
     target_size: u64,
     target_checksum: u32,
 
+    patch_path: PathBuf,
     patch_offset: u64,
     patch_checksum: u32,
-
-    metadata: Vec<u8>,
-
-    access_time: SystemTime,
-    create_time: SystemTime,
-    modify_time: SystemTime,
+    patch_metadata: Vec<u8>,
+    patch_modified: SystemTime,
 }
 
 impl BpsPatch {
     pub fn new(patch_path: &Path) -> Result<Self, Box<dyn Error>> {
         let mut f = File::open(patch_path)?;
 
-        // Header
         let mut format_marker: [u8; 4] = [0; 4];
         f.read_exact(&mut format_marker)?;
         if format_marker != BPS_FORMAT_MARKER {
@@ -75,38 +71,31 @@ impl BpsPatch {
 
         let source_size = f.read_vlq()?;
         let target_size = f.read_vlq()?;
+        let patch_metadata_size = f.read_vlq()?;
 
-        let metadata_size = f.read_vlq()?;
-        let mut metadata: Vec<u8> = vec![0; metadata_size as usize];
-        f.read_exact(&mut metadata)?;
+        let mut patch_metadata: Vec<u8> = vec![0; patch_metadata_size as usize];
+        f.read_exact(&mut patch_metadata)?;
 
-        // Patch
         let patch_offset = f.stream_position()?;
 
-        // Footer
         f.seek(SeekFrom::End(-(BPS_FOOTER_SIZE as i64)))?;
         let source_checksum = f.read_u32::<LittleEndian>()?;
         let target_checksum = f.read_u32::<LittleEndian>()?;
         let patch_checksum = f.read_u32::<LittleEndian>()?;
 
-        // Patch time metadata
-        let access_time = f.metadata()?.accessed()?;
-        let create_time = f.metadata()?.created()?;
-        let modify_time = f.metadata()?.modified()?;
+        let patch_modified = f.metadata()?.modified()?;
 
         Ok(Self {
             source_path: None,
-            patch_path: patch_path.to_owned(),
             source_size,
             source_checksum,
             target_size,
             target_checksum,
+            patch_path: patch_path.to_owned(),
             patch_offset,
             patch_checksum,
-            metadata,
-            access_time,
-            create_time,
-            modify_time,
+            patch_metadata,
+            patch_modified,
         })
     }
 
@@ -125,6 +114,15 @@ impl Patch for BpsPatch {
     }
 
     fn patched_rom(&self) -> Result<Vec<u8>, Box<dyn Error>> {
+        let mut patch_file = File::open(&self.patch_path)?;
+
+        if patch_file.metadata()?.modified()? != self.patch_modified {
+            return Err(Box::new(BpsError::OutdatedCache));
+        }
+
+        patch_file.seek(SeekFrom::Start(self.patch_offset))?;
+        let patch_end_offset = (patch_file.stream_len()? as usize) - BPS_FOOTER_SIZE;
+
         let source = fs::read(self.source_path.as_ref().unwrap())?;
 
         if source.len() as u64 != self.source_size {
@@ -137,18 +135,13 @@ impl Patch for BpsPatch {
 
         let mut target = vec![0; self.target_size as usize];
 
-        // TODO: patch_file CRC checksum
-        let mut patch_file = BufReader::new(File::open(&self.patch_path)?);
-        patch_file.seek(SeekFrom::Start(self.patch_offset))?;
-        let patch_end_offset = (patch_file.stream_len()? as usize) - BPS_FOOTER_SIZE;
-
-        let mut output_offset: usize = 0;
-        let mut source_relative_offset: usize = 0;
-        let mut target_relative_offset: usize = 0;
+        let mut output_offset = 0;
+        let mut source_relative_offset = 0;
+        let mut target_relative_offset = 0;
 
         while (patch_file.stream_position()? as usize) < patch_end_offset {
             #[derive(TryFromPrimitive)]
-            #[repr(u64)]
+            #[repr(usize)]
             enum BpsCommand {
                 SourceRead,
                 TargetRead,
@@ -157,22 +150,22 @@ impl Patch for BpsPatch {
             }
 
             let (command, length) = {
-                let data = patch_file.read_vlq()?;
+                let data = patch_file.read_vlq()? as usize;
                 (BpsCommand::try_from(data & 3)?, (data >> 2) + 1)
             };
 
             match command {
                 BpsCommand::SourceRead => {
-                    for _ in 0..length {
-                        target[output_offset] = source[output_offset];
-                        output_offset += 1;
+                    for i in 0..length {
+                        target[output_offset + i] = source[output_offset + i];
                     }
+                    output_offset += length;
                 }
                 BpsCommand::TargetRead => {
-                    for _ in 0..length {
-                        target[output_offset] = patch_file.read_u8()?;
-                        output_offset += 1;
+                    for i in 0..length {
+                        target[output_offset + i] = patch_file.read_u8()?;
                     }
+                    output_offset += length;
                 }
                 BpsCommand::SourceCopy => {
                     let data = patch_file.read_vlq()?;
@@ -184,11 +177,11 @@ impl Patch for BpsPatch {
                         source_relative_offset += offs;
                     }
 
-                    for _ in 0..length {
-                        target[output_offset] = source[source_relative_offset];
-                        output_offset += 1;
-                        source_relative_offset += 1;
+                    for i in 0..length {
+                        target[output_offset + i] = source[source_relative_offset + i];
                     }
+                    output_offset += length;
+                    source_relative_offset += length;
                 }
                 BpsCommand::TargetCopy => {
                     let data = patch_file.read_vlq()?;
@@ -200,11 +193,11 @@ impl Patch for BpsPatch {
                         target_relative_offset += offs;
                     }
 
-                    for _ in 0..length {
-                        target[output_offset] = target[target_relative_offset];
-                        output_offset += 1;
-                        target_relative_offset += 1;
+                    for i in 0..length {
+                        target[output_offset + i] = target[target_relative_offset + i];
                     }
+                    output_offset += length;
+                    target_relative_offset += length;
                 }
             }
         }
