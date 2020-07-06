@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt;
 use std::fs::{self, File};
@@ -7,6 +8,7 @@ use std::time::SystemTime;
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use crc::crc32;
+use num_enum::TryFromPrimitive;
 
 use crate::patch::Patch;
 use crate::readext::ReadExt;
@@ -145,28 +147,34 @@ impl Patch for BpsPatch {
         let mut target_relative_offset: usize = 0;
 
         while (patch_file.stream_position()? as usize) < patch_end_offset {
+            #[derive(TryFromPrimitive)]
+            #[repr(u64)]
+            enum BpsCommand {
+                SourceRead,
+                TargetRead,
+                SourceCopy,
+                TargetCopy,
+            }
+
             let (command, length) = {
                 let data = patch_file.read_vlq()?;
-                (data & 3, (data >> 2) + 1)
+                (BpsCommand::try_from(data & 3)?, (data >> 2) + 1)
             };
 
             match command {
-                0 => {
-                    // SourceRead
+                BpsCommand::SourceRead => {
                     for _ in 0..length {
                         target[output_offset] = source[output_offset];
                         output_offset += 1;
                     }
                 }
-                1 => {
-                    // TargetRead
+                BpsCommand::TargetRead => {
                     for _ in 0..length {
                         target[output_offset] = patch_file.read_u8()?;
                         output_offset += 1;
                     }
                 }
-                2 => {
-                    // SourceCopy
+                BpsCommand::SourceCopy => {
                     let data = patch_file.read_vlq()?;
 
                     let offs = (data >> 1) as usize;
@@ -182,8 +190,7 @@ impl Patch for BpsPatch {
                         source_relative_offset += 1;
                     }
                 }
-                3 => {
-                    // TargetCopy
+                BpsCommand::TargetCopy => {
                     let data = patch_file.read_vlq()?;
 
                     let offs = (data >> 1) as usize;
@@ -199,7 +206,6 @@ impl Patch for BpsPatch {
                         target_relative_offset += 1;
                     }
                 }
-                _ => unreachable!(),
             }
         }
 
