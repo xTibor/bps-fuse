@@ -1,6 +1,7 @@
 use std::cmp;
+use std::error::Error;
 use std::fs::{self, File};
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use byteorder::{BigEndian, ReadBytesExt};
@@ -18,7 +19,7 @@ pub struct IpsPatch {
 const IPS_EOF_MARKER: usize = 0x454F46;
 
 impl IpsPatch {
-    pub fn new(patch_path: &Path, source_path: &Path) -> io::Result<Self> {
+    pub fn new(patch_path: &Path, source_path: &Path) -> Result<Self, Box<dyn Error>> {
         let mut patch_file = File::open(patch_path)?;
 
         let mut target_size: u64 = {
@@ -62,7 +63,7 @@ impl Patch for IpsPatch {
         self.truncated_size.unwrap_or(self.target_size)
     }
 
-    fn patched_rom(&self) -> io::Result<Vec<u8>> {
+    fn patched_rom(&self) -> Result<Vec<u8>, Box<dyn Error>> {
         let mut target = fs::read(&self.source_path)?;
         target.resize(self.target_size as usize, 0);
 

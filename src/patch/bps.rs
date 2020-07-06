@@ -1,5 +1,7 @@
+use std::error::Error;
+use std::fmt;
 use std::fs::{self, File};
-use std::io::{self, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -9,7 +11,33 @@ use crc::crc32;
 use crate::patch::Patch;
 use crate::readext::ReadExt;
 
-const FOOTER_SIZE: usize = 12;
+const BPS_FORMAT_MARKER: [u8; 4] = [b'B', b'P', b'S', b'1'];
+const BPS_FOOTER_SIZE: usize = 12;
+
+#[derive(Debug)]
+pub enum BpsError {
+    FormatMarker,
+    SourceLength,
+    TargetLength,
+    SourceChecksum,
+    TargetChecksum,
+    PatchChecksum,
+}
+
+impl fmt::Display for BpsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BpsError::FormatMarker => write!(f, "invalid format marker"),
+            BpsError::SourceLength => write!(f, "source length mismatch"),
+            BpsError::TargetLength => write!(f, "target length mismatch"),
+            BpsError::SourceChecksum => write!(f, "invalid source checksum"),
+            BpsError::TargetChecksum => write!(f, "invalid target checksum"),
+            BpsError::PatchChecksum => write!(f, "invalid patch checksum"),
+        }
+    }
+}
+
+impl Error for BpsError {}
 
 #[derive(Debug)]
 pub struct BpsPatch {
@@ -33,13 +61,19 @@ pub struct BpsPatch {
 }
 
 impl BpsPatch {
-    pub fn new(patch_path: &Path) -> io::Result<Self> {
+    pub fn new(patch_path: &Path) -> Result<Self, Box<dyn Error>> {
         let mut f = File::open(patch_path)?;
 
         // Header
-        let _magic = f.read_u32::<LittleEndian>()?;
+        let mut format_marker: [u8; 4] = [0; 4];
+        f.read_exact(&mut format_marker)?;
+        if format_marker != BPS_FORMAT_MARKER {
+            return Err(Box::new(BpsError::FormatMarker));
+        }
+
         let source_size = f.read_vlq()?;
         let target_size = f.read_vlq()?;
+
         let metadata_size = f.read_vlq()?;
         let mut metadata: Vec<u8> = vec![0; metadata_size as usize];
         f.read_exact(&mut metadata)?;
@@ -48,7 +82,7 @@ impl BpsPatch {
         let patch_offset = f.stream_position()?;
 
         // Footer
-        f.seek(SeekFrom::End(-(FOOTER_SIZE as i64)))?;
+        f.seek(SeekFrom::End(-(BPS_FOOTER_SIZE as i64)))?;
         let source_checksum = f.read_u32::<LittleEndian>()?;
         let target_checksum = f.read_u32::<LittleEndian>()?;
         let patch_checksum = f.read_u32::<LittleEndian>()?;
@@ -88,19 +122,23 @@ impl Patch for BpsPatch {
         self.target_size
     }
 
-    fn patched_rom(&self) -> io::Result<Vec<u8>> {
-        assert!(self.source_path.is_some());
-
+    fn patched_rom(&self) -> Result<Vec<u8>, Box<dyn Error>> {
         let source = fs::read(self.source_path.as_ref().unwrap())?;
-        assert_eq!(source.len() as u64, self.source_size);
-        assert_eq!(self.source_checksum, crc32::checksum_ieee(&source));
+
+        if source.len() as u64 != self.source_size {
+            return Err(Box::new(BpsError::SourceLength));
+        }
+
+        if crc32::checksum_ieee(&source) != self.source_checksum {
+            return Err(Box::new(BpsError::SourceChecksum));
+        }
 
         let mut target = vec![0; self.target_size as usize];
 
         // TODO: patch_file CRC checksum
         let mut patch_file = BufReader::new(File::open(&self.patch_path)?);
         patch_file.seek(SeekFrom::Start(self.patch_offset))?;
-        let patch_end_offset = (patch_file.stream_len()? as usize) - FOOTER_SIZE;
+        let patch_end_offset = (patch_file.stream_len()? as usize) - BPS_FOOTER_SIZE;
 
         let mut output_offset: usize = 0;
         let mut source_relative_offset: usize = 0;
@@ -165,8 +203,14 @@ impl Patch for BpsPatch {
             }
         }
 
-        assert_eq!(target.len() as u64, self.target_size);
-        assert_eq!(self.target_checksum, crc32::checksum_ieee(&target));
+        if target.len() as u64 != self.target_size {
+            return Err(Box::new(BpsError::TargetLength));
+        }
+
+        if crc32::checksum_ieee(&target) != self.target_checksum {
+            return Err(Box::new(BpsError::TargetChecksum));
+        }
+
         Ok(target)
     }
 }

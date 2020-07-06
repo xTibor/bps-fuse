@@ -59,7 +59,7 @@ impl RomManager {
         }
 
         let entries: Vec<DirEntry> = fs::read_dir(&self.base_directory)?
-            .filter_map(|e| e.ok())
+            .filter_map(Result::ok)
             .filter(|e| !e.file_type().unwrap().is_dir())
             .collect();
 
