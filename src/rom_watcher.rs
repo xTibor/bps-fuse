@@ -1,4 +1,4 @@
-use std::io::Result;
+use std::io;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -12,7 +12,7 @@ pub struct RomWatcher {
 }
 
 impl RomWatcher {
-    pub fn new(rom_manager: Arc<Mutex<RomManager>>) -> Result<Self> {
+    pub fn new(rom_manager: Arc<Mutex<RomManager>>) -> io::Result<Self> {
         let inotify = Arc::new(Mutex::new(Inotify::init()?));
 
         {

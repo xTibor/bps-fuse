@@ -213,7 +213,7 @@ impl FilesystemMT for RomFilesystem {
         fh: u64,
         offset: u64,
         size: u32,
-        result: impl FnOnce(std::result::Result<&[u8], libc::c_int>),
+        result: impl FnOnce(Result<&[u8], libc::c_int>),
     ) {
         let mut handles = self.handles.lock().unwrap();
 

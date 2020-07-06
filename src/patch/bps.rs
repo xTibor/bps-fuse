@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::{BufReader, Read, Result, Seek, SeekFrom};
+use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -33,7 +33,7 @@ pub struct BpsPatch {
 }
 
 impl BpsPatch {
-    pub fn new(patch_path: &Path) -> Result<Self> {
+    pub fn new(patch_path: &Path) -> io::Result<Self> {
         let mut f = File::open(patch_path)?;
 
         // Header
@@ -88,7 +88,7 @@ impl Patch for BpsPatch {
         self.target_size
     }
 
-    fn patched_rom(&self) -> Result<Vec<u8>> {
+    fn patched_rom(&self) -> io::Result<Vec<u8>> {
         assert!(self.source_path.is_some());
 
         let source = fs::read(self.source_path.as_ref().unwrap())?;

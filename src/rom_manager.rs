@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs::{self, DirEntry};
-use std::io::Result;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -34,7 +34,7 @@ pub struct RomManager {
 }
 
 impl RomManager {
-    pub fn new(base_directory: &Path) -> Result<RomManager> {
+    pub fn new(base_directory: &Path) -> io::Result<RomManager> {
         let mut result = Self {
             base_directory: base_directory.to_owned(),
             source_roms: HashMap::new(),
@@ -44,7 +44,7 @@ impl RomManager {
         Ok(result)
     }
 
-    pub fn refresh(&mut self) -> Result<()> {
+    pub fn refresh(&mut self) -> io::Result<()> {
         eprintln!("Refreshing");
         self.source_roms.clear();
         self.target_roms.clear();
