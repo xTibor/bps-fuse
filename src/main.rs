@@ -1,4 +1,5 @@
 #![feature(seek_convenience)]
+#![feature(slice_fill)]
 
 use std::env;
 use std::error::Error;

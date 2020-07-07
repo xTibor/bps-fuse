@@ -1,5 +1,6 @@
 use std::cmp;
 use std::error::Error;
+use std::fmt;
 use std::fs::{self, File};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -8,6 +9,24 @@ use byteorder::{BigEndian, ReadBytesExt};
 
 use crate::patch::Patch;
 
+const IPS_FORMAT_MARKER: [u8; 5] = [b'P', b'A', b'T', b'C', b'H'];
+const IPS_EOF_MARKER: usize = 0x454F46;
+
+#[derive(Debug)]
+pub enum IpsError {
+    FormatMarker,
+}
+
+impl fmt::Display for IpsError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            IpsError::FormatMarker => write!(f, "invalid format marker"),
+        }
+    }
+}
+
+impl Error for IpsError {}
+
 pub struct IpsPatch {
     source_path: PathBuf,
     patch_path: PathBuf,
@@ -15,8 +34,6 @@ pub struct IpsPatch {
     target_size: u64,
     truncated_size: Option<u64>,
 }
-
-const IPS_EOF_MARKER: usize = 0x454F46;
 
 impl IpsPatch {
     pub fn new(patch_path: &Path, source_path: &Path) -> Result<Self, Box<dyn Error>> {
@@ -27,8 +44,11 @@ impl IpsPatch {
             source_file.metadata()?.len()
         };
 
-        let mut magic: [u8; 5] = [0; 5];
-        patch_file.read_exact(&mut magic)?;
+        let mut format_marker: [u8; 5] = [0; 5];
+        patch_file.read_exact(&mut format_marker)?;
+        if format_marker != IPS_FORMAT_MARKER {
+            return Err(Box::new(IpsError::FormatMarker));
+        }
 
         loop {
             let offset = patch_file.read_u24::<BigEndian>()? as usize;
@@ -69,8 +89,11 @@ impl Patch for IpsPatch {
 
         let mut patch_file = File::open(&self.patch_path)?;
 
-        let mut magic: [u8; 5] = [0; 5];
-        patch_file.read_exact(&mut magic)?;
+        let mut format_marker: [u8; 5] = [0; 5];
+        patch_file.read_exact(&mut format_marker)?;
+        if format_marker != IPS_FORMAT_MARKER {
+            return Err(Box::new(IpsError::FormatMarker));
+        }
 
         loop {
             let offset = patch_file.read_u24::<BigEndian>()? as usize;
@@ -82,9 +105,7 @@ impl Patch for IpsPatch {
             if size == 0 {
                 let rle_size = patch_file.read_u16::<BigEndian>()? as usize;
                 let rle_value = patch_file.read_u8()?;
-                for i in 0..rle_size {
-                    target[offset + i] = rle_value;
-                }
+                target[offset..offset + rle_size].fill(rle_value);
             } else {
                 patch_file.read_exact(&mut target[offset..offset + size])?;
             }
