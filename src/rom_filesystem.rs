@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use fuse_mt::{DirectoryEntry, FileAttr, FileType, FilesystemMT, RequestInfo};
 use fuse_mt::{ResultEmpty, ResultEntry, ResultOpen, ResultReaddir};
+use log::error;
 use time::Timespec;
 
 use crate::patch::Patch;
@@ -223,7 +224,7 @@ impl FilesystemMT for RomFilesystem {
                 match patch.patched_rom() {
                     Ok(patched_rom) => *data = Some(patched_rom),
                     Err(err) => {
-                        eprintln!("Failed to patch ROM: {}", err);
+                        error!("Failed to patch ROM: {}", err);
                         result(Err(libc::EIO));
                         return;
                     }

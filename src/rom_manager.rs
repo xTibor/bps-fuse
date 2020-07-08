@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crc::crc32;
+use log::{error, info, warn};
 
 use crate::patch::bps::BpsPatch;
 use crate::patch::ips::IpsPatch;
@@ -45,7 +46,7 @@ impl RomManager {
     }
 
     pub fn refresh(&mut self) -> io::Result<()> {
-        eprintln!("Refreshing");
+        info!("Refreshing");
         self.source_roms.clear();
         self.target_roms.clear();
 
@@ -69,7 +70,7 @@ impl RomManager {
         }
 
         if self.source_roms.is_empty() {
-            eprintln!("No source ROMs were found in {:?}", self.base_directory);
+            warn!("No source ROMs were found in {:?}", self.base_directory);
             return Ok(());
         }
 
@@ -83,7 +84,7 @@ impl RomManager {
                         target_path.set_extension(source_path.extension().unwrap_or_default());
                         self.target_roms.insert(target_path, Arc::new(patch));
                     } else {
-                        eprintln!(
+                        warn!(
                             "No source ROM was found for {:?} (CRC32=0x{:08X})",
                             entry.path(),
                             patch.source_checksum()
@@ -91,14 +92,14 @@ impl RomManager {
                     }
                 }
                 Err(err) => {
-                    eprintln!("Failed to load {:?}: {}", entry.path(), err);
+                    error!("Failed to load {:?}: {}", entry.path(), err);
                 }
             }
         }
 
         for entry in entries.iter().filter(|e| extension_matches(&e.path(), &["ips"])) {
             if self.source_roms.len() > 1 {
-                eprintln!(
+                warn!(
                     "Multiple source ROMs were found for {:?}, cannot decide which one to choose",
                     entry.path()
                 );
@@ -112,7 +113,7 @@ impl RomManager {
                         self.target_roms.insert(target_path, Arc::new(patch));
                     }
                     Err(err) => {
-                        eprintln!("Failed to load {:?}: {}", entry.path(), err);
+                        error!("Failed to load {:?}: {}", entry.path(), err);
                     }
                 }
             }

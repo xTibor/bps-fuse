@@ -26,6 +26,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         process::exit(-1);
     }
 
+    pretty_env_logger::init();
+
     let base_directory = PathBuf::from(&args[1]);
     let rom_manager = Arc::new(Mutex::new(RomManager::new(&base_directory)?));
 

@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use inotify::{EventMask, Inotify, WatchMask};
+use log::error;
 
 use crate::rom_manager::RomManager;
 
@@ -27,7 +28,7 @@ impl RomWatcher {
         {
             let inotify = inotify.clone();
             thread::spawn(move || {
-                let mut buffer = [0u8; 4096];
+                let mut buffer = [0; 4096];
                 loop {
                     let events = inotify.lock().unwrap().read_events_blocking(&mut buffer).unwrap();
 
@@ -42,7 +43,7 @@ impl RomWatcher {
 
                     if changed {
                         if let Err(err) = rom_manager.lock().unwrap().refresh() {
-                            eprintln!("Failed to refresh ROMs: {}", err);
+                            error!("Failed to refresh ROMs: {}", err);
                         }
                     }
                 }
