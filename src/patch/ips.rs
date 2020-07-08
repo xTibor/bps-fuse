@@ -105,9 +105,9 @@ impl Patch for IpsPatch {
             if size == 0 {
                 let rle_size = patch_file.read_u16::<BigEndian>()? as usize;
                 let rle_value = patch_file.read_u8()?;
-                target[offset..offset + rle_size].fill(rle_value);
+                target[offset..(offset + rle_size)].fill(rle_value);
             } else {
-                patch_file.read_exact(&mut target[offset..offset + size])?;
+                patch_file.read_exact(&mut target[offset..(offset + size)])?;
             }
         }
 

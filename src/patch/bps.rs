@@ -156,26 +156,23 @@ impl Patch for BpsPatch {
 
             match command {
                 BpsCommand::SourceRead => {
-                    for i in 0..length {
-                        target[output_offset + i] = source[output_offset + i];
-                    }
+                    target[output_offset..(output_offset + length)]
+                        .clone_from_slice(&source[output_offset..(output_offset + length)]);
                     output_offset += length;
                 }
                 BpsCommand::TargetRead => {
-                    for i in 0..length {
-                        target[output_offset + i] = patch_file.read_u8()?;
-                    }
+                    patch_file.read_exact(&mut target[output_offset..(output_offset + length)])?;
                     output_offset += length;
                 }
                 BpsCommand::SourceCopy => {
                     let offset = patch_file.read_signed_vlq()?;
                     source_relative_offset = (source_relative_offset as isize + offset as isize) as usize; // unsafe
 
-                    for i in 0..length {
-                        target[output_offset + i] = source[source_relative_offset + i];
-                    }
-                    output_offset += length;
+                    target[output_offset..(output_offset + length)]
+                        .clone_from_slice(&source[source_relative_offset..(source_relative_offset + length)]);
+
                     source_relative_offset += length;
+                    output_offset += length;
                 }
                 BpsCommand::TargetCopy => {
                     let offset = patch_file.read_signed_vlq()?;
@@ -184,8 +181,9 @@ impl Patch for BpsPatch {
                     for i in 0..length {
                         target[output_offset + i] = target[target_relative_offset + i];
                     }
-                    output_offset += length;
+
                     target_relative_offset += length;
+                    output_offset += length;
                 }
             }
         }
