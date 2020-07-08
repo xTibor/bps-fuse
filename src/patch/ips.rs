@@ -14,13 +14,17 @@ const IPS_EOF_MARKER: usize = 0x454F46;
 
 #[derive(Debug)]
 pub enum IpsError {
-    FormatMarker,
+    FormatMarker { expected: [u8; 5], received: [u8; 5] },
 }
 
 impl fmt::Display for IpsError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            IpsError::FormatMarker => write!(f, "invalid format marker"),
+            IpsError::FormatMarker { expected, received } => write!(
+                formatter,
+                "invalid format marker (expected: {:?}, received: {:?})",
+                expected, received
+            ),
         }
     }
 }
@@ -47,7 +51,10 @@ impl IpsPatch {
         let mut format_marker: [u8; 5] = [0; 5];
         patch_file.read_exact(&mut format_marker)?;
         if format_marker != IPS_FORMAT_MARKER {
-            return Err(Box::new(IpsError::FormatMarker));
+            return Err(Box::new(IpsError::FormatMarker {
+                expected: IPS_FORMAT_MARKER,
+                received: format_marker,
+            }));
         }
 
         loop {
@@ -92,7 +99,10 @@ impl Patch for IpsPatch {
         let mut format_marker: [u8; 5] = [0; 5];
         patch_file.read_exact(&mut format_marker)?;
         if format_marker != IPS_FORMAT_MARKER {
-            return Err(Box::new(IpsError::FormatMarker));
+            return Err(Box::new(IpsError::FormatMarker {
+                expected: IPS_FORMAT_MARKER,
+                received: format_marker,
+            }));
         }
 
         loop {

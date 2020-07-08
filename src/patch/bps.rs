@@ -19,24 +19,48 @@ const BPS_FOOTER_SIZE: usize = 12;
 #[derive(Debug)]
 pub enum BpsError {
     OutdatedCache,
-    FormatMarker,
-    SourceLength,
-    TargetLength,
-    SourceChecksum,
-    TargetChecksum,
-    PatchChecksum,
+    FormatMarker { expected: [u8; 4], received: [u8; 4] },
+    SourceLength { expected: u64, received: u64 },
+    TargetLength { expected: u64, received: u64 },
+    SourceChecksum { expected: u32, received: u32 },
+    TargetChecksum { expected: u32, received: u32 },
+    PatchChecksum { expected: u32, received: u32 },
 }
 
 impl fmt::Display for BpsError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            BpsError::OutdatedCache => write!(f, "outdated cache"),
-            BpsError::FormatMarker => write!(f, "invalid format marker"),
-            BpsError::SourceLength => write!(f, "source length mismatch"),
-            BpsError::TargetLength => write!(f, "target length mismatch"),
-            BpsError::SourceChecksum => write!(f, "invalid source checksum"),
-            BpsError::TargetChecksum => write!(f, "invalid target checksum"),
-            BpsError::PatchChecksum => write!(f, "invalid patch checksum"),
+            BpsError::OutdatedCache => write!(formatter, "outdated cache"),
+            BpsError::FormatMarker { expected, received } => write!(
+                formatter,
+                "invalid format marker (expected: {:?}, received: {:?})",
+                expected, received
+            ),
+            BpsError::SourceLength { expected, received } => write!(
+                formatter,
+                "source length mismatch (expected: {}, received: {})",
+                expected, received
+            ),
+            BpsError::TargetLength { expected, received } => write!(
+                formatter,
+                "target length mismatch (expected: {}, received: {})",
+                expected, received
+            ),
+            BpsError::SourceChecksum { expected, received } => write!(
+                formatter,
+                "invalid source checksum (expected: 0x{:08X}, received: 0x{:08X})",
+                expected, received
+            ),
+            BpsError::TargetChecksum { expected, received } => write!(
+                formatter,
+                "invalid target checksum (expected: 0x{:08X}, received: 0x{:08X})",
+                expected, received
+            ),
+            BpsError::PatchChecksum { expected, received } => write!(
+                formatter,
+                "invalid patch checksum (expected: 0x{:08X}, received: 0x{:08X})",
+                expected, received
+            ),
         }
     }
 }
@@ -66,7 +90,10 @@ impl BpsPatch {
         let mut format_marker: [u8; 4] = [0; 4];
         patch_file.read_exact(&mut format_marker)?;
         if format_marker != BPS_FORMAT_MARKER {
-            return Err(Box::new(BpsError::FormatMarker));
+            return Err(Box::new(BpsError::FormatMarker {
+                expected: BPS_FORMAT_MARKER,
+                received: format_marker,
+            }));
         }
 
         let source_size = patch_file.read_vlq()?;
@@ -126,8 +153,12 @@ impl Patch for BpsPatch {
             patch_data
         };
 
-        if crc32::checksum_ieee(&patch_data[0..(patch_data.len() - 4)]) != self.patch_checksum {
-            return Err(Box::new(BpsError::PatchChecksum));
+        let patch_checksum = crc32::checksum_ieee(&patch_data[0..(patch_data.len() - 4)]);
+        if patch_checksum != self.patch_checksum {
+            return Err(Box::new(BpsError::PatchChecksum {
+                expected: self.patch_checksum,
+                received: patch_checksum,
+            }));
         }
 
         let mut patch_cursor =
@@ -136,11 +167,18 @@ impl Patch for BpsPatch {
         let source = fs::read(self.source_path.as_ref().unwrap())?;
 
         if source.len() as u64 != self.source_size {
-            return Err(Box::new(BpsError::SourceLength));
+            return Err(Box::new(BpsError::SourceLength {
+                expected: self.source_size,
+                received: source.len() as u64,
+            }));
         }
 
-        if crc32::checksum_ieee(&source) != self.source_checksum {
-            return Err(Box::new(BpsError::SourceChecksum));
+        let source_checksum = crc32::checksum_ieee(&source);
+        if source_checksum != self.source_checksum {
+            return Err(Box::new(BpsError::SourceChecksum {
+                expected: self.source_checksum,
+                received: source_checksum,
+            }));
         }
 
         let mut target = vec![0; self.target_size as usize];
@@ -199,11 +237,18 @@ impl Patch for BpsPatch {
         }
 
         if target.len() as u64 != self.target_size {
-            return Err(Box::new(BpsError::TargetLength));
+            return Err(Box::new(BpsError::TargetLength {
+                expected: self.target_size,
+                received: target.len() as u64,
+            }));
         }
 
-        if crc32::checksum_ieee(&target) != self.target_checksum {
-            return Err(Box::new(BpsError::TargetChecksum));
+        let target_checksum = crc32::checksum_ieee(&target);
+        if target_checksum != self.target_checksum {
+            return Err(Box::new(BpsError::TargetChecksum {
+                expected: self.target_checksum,
+                received: target_checksum,
+            }));
         }
 
         Ok(target)
