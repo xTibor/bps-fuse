@@ -9,10 +9,10 @@ use std::process;
 use std::sync::{Arc, Mutex};
 
 mod patch;
-mod readext;
 mod rom_filesystem;
 mod rom_manager;
 mod rom_watcher;
+mod utils;
 
 use rom_filesystem::RomFilesystem;
 use rom_manager::RomManager;

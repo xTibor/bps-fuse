@@ -17,6 +17,17 @@ pub trait ReadExt: Read {
         }
         Ok(data)
     }
+
+    fn read_signed_vlq(&mut self) -> io::Result<i64> {
+        let data = self.read_vlq()?;
+
+        let value = (data >> 1) as i64;
+        if data & 1 != 0 {
+            Ok(-value)
+        } else {
+            Ok(value)
+        }
+    }
 }
 
 impl<T> ReadExt for T where T: Read {}

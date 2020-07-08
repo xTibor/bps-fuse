@@ -11,7 +11,7 @@ use crc::crc32;
 use num_enum::TryFromPrimitive;
 
 use crate::patch::Patch;
-use crate::readext::ReadExt;
+use crate::utils::ReadExt;
 
 const BPS_FORMAT_MARKER: [u8; 4] = [b'B', b'P', b'S', b'1'];
 const BPS_FOOTER_SIZE: usize = 12;
@@ -168,14 +168,8 @@ impl Patch for BpsPatch {
                     output_offset += length;
                 }
                 BpsCommand::SourceCopy => {
-                    let data = patch_file.read_vlq()?;
-
-                    let offs = (data >> 1) as usize;
-                    if data & 1 != 0 {
-                        source_relative_offset -= offs;
-                    } else {
-                        source_relative_offset += offs;
-                    }
+                    let offset = patch_file.read_signed_vlq()?;
+                    source_relative_offset = (source_relative_offset as isize + offset as isize) as usize; // unsafe
 
                     for i in 0..length {
                         target[output_offset + i] = source[source_relative_offset + i];
@@ -184,14 +178,8 @@ impl Patch for BpsPatch {
                     source_relative_offset += length;
                 }
                 BpsCommand::TargetCopy => {
-                    let data = patch_file.read_vlq()?;
-
-                    let offs = (data >> 1) as usize;
-                    if data & 1 != 0 {
-                        target_relative_offset -= offs;
-                    } else {
-                        target_relative_offset += offs;
-                    }
+                    let offset = patch_file.read_signed_vlq()?;
+                    target_relative_offset = (target_relative_offset as isize + offset as isize) as usize; // unsafe
 
                     for i in 0..length {
                         target[output_offset + i] = target[target_relative_offset + i];
